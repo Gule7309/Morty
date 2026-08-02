@@ -6,6 +6,7 @@ export interface SaveDocumentInput {
   name: string
   source: StoredDocument['source']
   sourceFileId?: string
+  cloudDocumentId?: string
   mimeType: string
   size: number
   blob: Blob

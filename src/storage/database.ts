@@ -6,8 +6,9 @@ const DATABASE_VERSION = 1
 export interface StoredDocument {
   id: string
   name: string
-  source: 'local' | 'google-drive'
+  source: 'local' | 'google-drive' | 'pocket-pdf'
   sourceFileId?: string
+  cloudDocumentId?: string
   mimeType: string
   size: number
   blob: Blob

@@ -13,6 +13,7 @@ dist-ssr
 *.local
 *.tsbuildinfo
 output/
+.wrangler/
 
 # Editor directories and files
 .vscode/*

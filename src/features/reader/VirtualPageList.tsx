@@ -1,7 +1,9 @@
 import { useVirtualizer } from '@tanstack/react-virtual'
 import {
+  forwardRef,
   useCallback,
   useEffect,
+  useImperativeHandle,
   useLayoutEffect,
   useReducer,
   useRef,
@@ -29,20 +31,31 @@ interface VirtualPageListProps {
   onRestoreComplete: () => void
 }
 
-export function VirtualPageList({
-  containerRef,
-  containerWidth,
-  initialPageIndex,
-  initialPageOffset,
-  numPages,
-  zoom,
-  onPositionChange,
-  onRestoreComplete,
-}: VirtualPageListProps) {
+export interface VirtualPageListHandle {
+  scrollToIndex: (pageIndex: number) => void
+}
+
+export const VirtualPageList = forwardRef<
+  VirtualPageListHandle,
+  VirtualPageListProps
+>(function VirtualPageList(
+  {
+    containerRef,
+    containerWidth,
+    initialPageIndex,
+    initialPageOffset,
+    numPages,
+    zoom,
+    onPositionChange,
+    onRestoreComplete,
+  },
+  ref,
+) {
   const pageRatiosRef = useRef(new Map<number, number>())
   const restoredRef = useRef(false)
   const pendingPositionRef = useRef<ReaderPosition | null>(null)
   const positionFrameRef = useRef<number | null>(null)
+  const calibrationFrameRef = useRef<number | null>(null)
   const [, rerenderForRatio] = useReducer((value) => value + 1, 0)
   const pageWidth = Math.max(1, containerWidth - HORIZONTAL_PADDING)
   const renderedPageWidth = pageWidth * zoom
@@ -66,7 +79,6 @@ export function VirtualPageList({
 
   // TanStack Virtual intentionally returns mutable functions; React Compiler
   // memoization is not enabled for this MVP.
-  // eslint-disable-next-line react-hooks/incompatible-library
   const virtualizer = useVirtualizer({
     count: numPages,
     getScrollElement: () => containerRef.current,
@@ -76,19 +88,79 @@ export function VirtualPageList({
       PAGE_GAP,
     overscan: 2,
     onChange(instance) {
-      const scrollOffset = instance.scrollOffset ?? 0
-      const firstVisible = instance
-        .getVirtualItems()
-        .find((item) => item.end > scrollOffset + 1)
+      const actualContainerWidth = containerRef.current?.clientWidth
+      if (
+        actualContainerWidth &&
+        Math.abs(actualContainerWidth - containerWidth) > 1
+      ) {
+        return
+      }
 
-      if (firstVisible) {
+      const scrollOffset = instance.scrollOffset ?? 0
+      const viewportEnd =
+        scrollOffset +
+        (instance.scrollRect?.height ??
+          containerRef.current?.clientHeight ??
+          0)
+      let currentVisible:
+        | ReturnType<typeof instance.getVirtualItems>[number]
+        | undefined
+      let largestVisibleArea = 0
+
+      for (const item of instance.getVirtualItems()) {
+        const visibleArea = Math.max(
+          0,
+          Math.min(item.end, viewportEnd) -
+            Math.max(item.start, scrollOffset),
+        )
+        if (visibleArea > largestVisibleArea) {
+          currentVisible = item
+          largestVisibleArea = visibleArea
+        }
+      }
+
+      if (currentVisible) {
         schedulePositionChange({
-          pageIndex: firstVisible.index,
-          pageOffset: Math.max(0, scrollOffset - firstVisible.start),
+          pageIndex: currentVisible.index,
+          pageOffset: Math.max(0, scrollOffset - currentVisible.start),
         })
       }
     },
   })
+
+  useImperativeHandle(
+    ref,
+    () => ({
+      scrollToIndex(pageIndex: number) {
+        virtualizer.scrollToIndex(pageIndex, {
+          align: 'start',
+          behavior: 'auto',
+        })
+
+        if (calibrationFrameRef.current !== null) {
+          cancelAnimationFrame(calibrationFrameRef.current)
+        }
+        calibrationFrameRef.current = requestAnimationFrame(() => {
+          calibrationFrameRef.current = null
+          const scrollElement = containerRef.current
+          const targetPage = virtualizer
+            .getVirtualItems()
+            .find((item) => item.index === pageIndex)
+          if (
+            scrollElement &&
+            targetPage &&
+            Math.abs(scrollElement.scrollTop - targetPage.start) > 2
+          ) {
+            virtualizer.scrollToIndex(pageIndex, {
+              align: 'start',
+              behavior: 'auto',
+            })
+          }
+        })
+      },
+    }),
+    [containerRef, virtualizer],
+  )
 
   useLayoutEffect(() => {
     virtualizer.measure()
@@ -99,6 +171,10 @@ export function VirtualPageList({
       if (positionFrameRef.current !== null) {
         cancelAnimationFrame(positionFrameRef.current)
         positionFrameRef.current = null
+      }
+      if (calibrationFrameRef.current !== null) {
+        cancelAnimationFrame(calibrationFrameRef.current)
+        calibrationFrameRef.current = null
       }
       pendingPositionRef.current = null
     }
@@ -192,4 +268,4 @@ export function VirtualPageList({
       ))}
     </div>
   )
-}
+})

@@ -177,6 +177,13 @@ input:focus-visible {
 }
 
 .readerShell {
+  --reader-top-control-height: calc(
+    58px + env(safe-area-inset-top)
+  );
+  --reader-bottom-control-height: calc(
+    70px + env(safe-area-inset-bottom)
+  );
+
   position: fixed;
   inset: 0;
   overflow: hidden;
@@ -192,6 +199,11 @@ input:focus-visible {
   overscroll-behavior: contain;
   scrollbar-color: #7b8492 transparent;
   -webkit-overflow-scrolling: touch;
+}
+
+.readerViewportLocked {
+  overflow: hidden;
+  touch-action: none;
 }
 
 .react-pdf__Document {
@@ -260,7 +272,7 @@ input:focus-visible {
   right: 0;
   left: 0;
   display: flex;
-  min-height: calc(58px + env(safe-area-inset-top));
+  min-height: var(--reader-top-control-height);
   align-items: flex-end;
   justify-content: space-between;
   gap: 12px;
@@ -367,6 +379,420 @@ input:focus-visible {
   opacity: 1;
 }
 
+.readerSideRail {
+  position: fixed;
+  z-index: 12;
+  top: max(
+    calc(var(--reader-top-control-height) + clamp(8px, 2vh, 14px)),
+    calc(env(safe-area-inset-top) + 12px)
+  );
+  bottom: max(
+    calc(
+      var(--reader-bottom-control-height) + clamp(8px, 2vh, 14px)
+    ),
+    calc(env(safe-area-inset-bottom) + 12px)
+  );
+  left: max(
+    clamp(6px, 1.6vw, 18px),
+    calc(env(safe-area-inset-left) + 4px)
+  );
+  display: flex;
+  width: 52px;
+  min-height: 0;
+  flex-direction: column;
+  align-items: stretch;
+  justify-content: center;
+  gap: clamp(6px, 1.5vh, 10px);
+  pointer-events: none;
+}
+
+.readerSideRailButton {
+  display: grid;
+  width: 52px;
+  min-width: 44px;
+  min-height: 52px;
+  padding: 4px;
+  color: #f8fafc;
+  font-size: 0.66rem;
+  font-weight: 750;
+  line-height: 1.05;
+  background: rgb(31 41 55 / 94%);
+  border: 1px solid rgb(255 255 255 / 12%);
+  border-radius: 14px;
+  box-shadow: 0 7px 20px rgb(16 24 40 / 24%);
+  pointer-events: auto;
+  place-items: center;
+}
+
+.readerSideRailButton[aria-pressed="true"] {
+  color: #1e3a5f;
+  background: #e8f1fb;
+  border-color: #93b4d4;
+}
+
+.readerSideRailIcon {
+  font-size: 1.28rem;
+  line-height: 1;
+}
+
+.readerNavigationLayer {
+  position: fixed;
+  z-index: 40;
+  inset: 0;
+  visibility: hidden;
+  pointer-events: none;
+  transition: visibility 0s linear 180ms;
+}
+
+.readerNavigationLayer[data-open="true"] {
+  visibility: visible;
+  pointer-events: auto;
+  transition-delay: 0s;
+}
+
+.readerNavigationBackdrop {
+  position: absolute;
+  inset: 0;
+  background: rgb(15 23 42 / 46%);
+  opacity: 0;
+  transition: opacity 180ms ease;
+}
+
+.readerNavigationLayer[data-open="true"] .readerNavigationBackdrop {
+  opacity: 1;
+}
+
+.readerNavigationDrawer {
+  position: fixed;
+  top: 0;
+  left: 0;
+  display: grid;
+  width: min(90vw, 360px);
+  height: 100vh;
+  height: 100dvh;
+  min-height: 0;
+  grid-template-rows: auto auto minmax(0, 1fr);
+  color: #1f2937;
+  background: #f8fafc;
+  border-radius: 0 20px 20px 0;
+  box-shadow: 14px 0 42px rgb(15 23 42 / 24%);
+  transform: translateX(-102%);
+  transition: transform 180ms ease;
+}
+
+.readerNavigationLayer[data-open="true"] .readerNavigationDrawer {
+  transform: translateX(0);
+}
+
+.readerNavigationHeader {
+  position: sticky;
+  z-index: 2;
+  top: 0;
+  display: grid;
+  min-width: 0;
+  min-height: calc(58px + env(safe-area-inset-top));
+  grid-template-columns: minmax(0, 1fr) 44px;
+  align-items: end;
+  gap: 8px;
+  padding:
+    max(8px, env(safe-area-inset-top))
+    max(12px, env(safe-area-inset-right))
+    8px
+    max(14px, env(safe-area-inset-left));
+  color: #fff;
+  background: #25364a;
+}
+
+.readerNavigationHeader p {
+  min-width: 0;
+  margin: 0;
+  padding-block: 10px;
+  overflow: hidden;
+  font-size: 0.92rem;
+  font-weight: 700;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.readerNavigationCloseButton {
+  display: grid;
+  width: 44px;
+  min-width: 44px;
+  min-height: 44px;
+  padding: 0;
+  color: #fff;
+  font-size: 1.65rem;
+  line-height: 1;
+  background: rgb(255 255 255 / 10%);
+  border-radius: 12px;
+  place-items: center;
+}
+
+.readerNavigationTabs {
+  position: sticky;
+  z-index: 2;
+  top: var(--reader-top-control-height);
+  display: grid;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  padding: 6px 8px;
+  background: #eef3f8;
+  border-bottom: 1px solid #d9e1ea;
+}
+
+.readerNavigationTabs button {
+  min-width: 0;
+  min-height: 44px;
+  padding: 0 8px;
+  color: #526174;
+  font-weight: 750;
+  background: transparent;
+  border-radius: 11px;
+}
+
+.readerNavigationTabs button[aria-selected="true"] {
+  color: #173b63;
+  background: #fff;
+  box-shadow: 0 2px 8px rgb(31 53 77 / 10%);
+}
+
+.readerNavigationPanel {
+  min-width: 0;
+  min-height: 0;
+  grid-row: 3;
+  padding: clamp(10px, 3vw, 16px);
+  overflow-y: auto;
+  overscroll-behavior: contain;
+}
+
+.readerNavigationPanel[hidden] {
+  display: none;
+}
+
+.readerNavigationThumbnailPanel {
+  overflow: hidden;
+}
+
+.readerNavigationMessage {
+  display: grid;
+  min-height: 100%;
+  align-content: center;
+  gap: 8px;
+  padding: 28px 18px;
+  color: #637083;
+  line-height: 1.55;
+  text-align: center;
+}
+
+.readerNavigationMessage strong {
+  color: #26384d;
+}
+
+.pdfOutlineSkeleton {
+  display: grid;
+  gap: 14px;
+  padding: 8px 2px;
+}
+
+.pdfOutlineSkeleton span {
+  height: 48px;
+  background:
+    linear-gradient(
+      90deg,
+      #edf1f5 25%,
+      #e2e8ef 38%,
+      #edf1f5 63%
+    );
+  background-size: 400% 100%;
+  border-radius: 12px;
+  animation: skeleton 1.3s ease infinite;
+}
+
+.pdfOutlineSkeleton span:nth-child(even) {
+  margin-inline-start: clamp(10px, 3vw, 14px);
+}
+
+.pdfOutline,
+.pdfOutline ul {
+  min-width: 0;
+  margin: 0;
+  padding: 0;
+  list-style: none;
+}
+
+.pdfOutline ul ul {
+  padding-inline-start: clamp(10px, 3vw, 14px);
+}
+
+.pdfOutlineRow {
+  display: grid;
+  min-width: 0;
+  grid-template-columns: 44px minmax(0, 1fr);
+  align-items: start;
+  border-bottom: 1px solid #e4e9ef;
+}
+
+.pdfOutlineExpandButton,
+.pdfOutlineLeafSpacer {
+  width: 44px;
+  min-width: 44px;
+  min-height: 44px;
+}
+
+.pdfOutlineExpandButton {
+  display: grid;
+  padding: 0;
+  color: #4b6078;
+  font-size: 1.25rem;
+  background: transparent;
+  border-radius: 10px;
+  place-items: center;
+}
+
+.pdfOutlineTitleButton {
+  display: flex;
+  min-width: 0;
+  min-height: 44px;
+  align-items: flex-start;
+  justify-content: space-between;
+  gap: 8px;
+  padding: 11px 4px 11px 0;
+  color: #24364b;
+  line-height: 1.4;
+  text-align: start;
+  background: transparent;
+}
+
+.pdfOutlineTitleButton > span:first-child {
+  min-width: 0;
+  overflow-wrap: anywhere;
+}
+
+.pdfOutlineTitleButton:disabled {
+  color: #8793a1;
+  opacity: 1;
+}
+
+.pdfOutlineResolving {
+  flex: 0 0 auto;
+  color: #6f7e90;
+  font-size: 0.72rem;
+  white-space: nowrap;
+}
+
+.pdfThumbnailScroll {
+  width: 100%;
+  height: 100%;
+  min-height: 0;
+  overflow-y: auto;
+  overscroll-behavior: contain;
+}
+
+.pdfThumbnailVirtualList {
+  position: relative;
+  width: 100%;
+}
+
+.pdfThumbnailRow {
+  position: absolute;
+  top: 0;
+  left: 0;
+  display: grid;
+  width: 100%;
+  min-height: clamp(190px, 28dvh, 240px);
+  min-width: 0;
+  grid-template-columns: auto minmax(0, 1fr);
+  align-items: center;
+  gap: clamp(12px, 4vw, 18px);
+  padding: 8px;
+  color: #34465b;
+  background: transparent;
+  border: 2px solid transparent;
+  border-radius: 14px;
+  cursor: pointer;
+}
+
+.pdfThumbnailRow:has(.pdfThumbnailRowButton:hover),
+.pdfThumbnailRow:has(.pdfThumbnailRowButton:focus-visible) {
+  background: #edf3f8;
+}
+
+.pdfThumbnailRowCurrent {
+  background: #e8f1fb;
+  border-color: #517da8;
+}
+
+.pdfThumbnail {
+  display: block;
+  overflow: hidden;
+  background: #fff;
+  border-radius: 4px;
+  box-shadow: 0 3px 12px rgb(15 23 42 / 18%);
+  pointer-events: none;
+}
+
+.pdfThumbnailPreview {
+  min-width: 0;
+  pointer-events: none;
+}
+
+.pdfThumbnail .react-pdf__Page,
+.pdfThumbnail canvas {
+  max-width: 100% !important;
+}
+
+.pdfThumbnailSkeleton {
+  display: block;
+  max-width: 100%;
+  background:
+    linear-gradient(
+      90deg,
+      #f2f4f7 25%,
+      #e4e9ef 38%,
+      #f2f4f7 63%
+    );
+  background-size: 400% 100%;
+  animation: skeleton 1.3s ease infinite;
+}
+
+.pdfThumbnailError {
+  display: grid;
+  aspect-ratio: 1 / 1.414;
+  color: #8b4d48;
+  font-size: 0.75rem;
+  background: #fff1f0;
+  place-items: center;
+}
+
+.pdfThumbnailPageNumber {
+  display: grid;
+  min-width: 0;
+  gap: 5px;
+  font-size: 0.88rem;
+  font-variant-numeric: tabular-nums;
+  font-weight: 700;
+}
+
+.pdfThumbnailCurrentLabel {
+  color: #315f8c;
+  font-size: 0.72rem;
+  font-weight: 750;
+}
+
+.pdfThumbnailRowButton {
+  position: absolute;
+  z-index: 1;
+  inset: 0;
+  width: 100%;
+  height: 100%;
+  padding: 0;
+  background: transparent;
+  border-radius: 12px;
+}
+
+.pdfThumbnailRowButton:focus-visible {
+  outline-offset: -3px;
+}
+
 .pageBadge {
   position: fixed;
   z-index: 8;
@@ -443,6 +869,74 @@ input:focus-visible {
   }
 }
 
+@media (max-width: 359px) {
+  .readerNavigationDrawer {
+    width: 100vw;
+    border-radius: 0;
+  }
+
+  .readerNavigationBackdrop {
+    display: none;
+  }
+
+  .readerNavigationPanel {
+    padding: 10px;
+  }
+
+  .readerNavigationHeader {
+    gap: 4px;
+    padding-right: max(8px, env(safe-area-inset-right));
+    padding-left: max(10px, env(safe-area-inset-left));
+  }
+
+  .pdfOutline ul ul {
+    padding-inline-start: clamp(8px, 2.5vw, 10px);
+  }
+}
+
+@media (min-width: 480px) and (max-width: 767px) {
+  .readerNavigationDrawer {
+    width: min(72vw, 380px);
+  }
+}
+
+@media (min-width: 768px) {
+  .readerNavigationDrawer {
+    width: min(42vw, 420px);
+  }
+
+  .readerSideRail {
+    left: max(
+      clamp(14px, 1.6vw, 24px),
+      calc(env(safe-area-inset-left) + 8px)
+    );
+  }
+}
+
+@media (max-height: 430px) {
+  .readerSideRail {
+    gap: 4px;
+  }
+
+  .readerSideRailButton {
+    min-height: 44px;
+  }
+
+  .readerNavigationHeader {
+    min-height: calc(50px + env(safe-area-inset-top));
+    padding-top: max(3px, env(safe-area-inset-top));
+    padding-bottom: 3px;
+  }
+
+  .readerNavigationHeader p {
+    padding-block: 8px;
+  }
+
+  .readerNavigationTabs {
+    padding-block: 2px;
+  }
+}
+
 @media (prefers-reduced-motion: reduce) {
   *,
   *::before,
@@ -451,5 +945,256 @@ input:focus-visible {
     animation-duration: 0.01ms !important;
     animation-iteration-count: 1 !important;
     transition-duration: 0.01ms !important;
+  }
+}
+
+/* Cloud library and quota */
+.emptyState {
+  overflow-y: auto;
+  place-items: start center;
+}
+
+.importCard {
+  width: min(100%, 680px);
+  padding-block: clamp(8px, 4vh, 36px);
+}
+
+.cloudAuth,
+.cloudAuthStatus {
+  margin: 0 0 22px;
+  padding: 14px;
+  background: #fff;
+  border: 1px solid #d8dde5;
+  border-radius: 14px;
+}
+
+.cloudAuth p {
+  margin: 0 0 12px;
+  color: #5b6472;
+  font-size: 0.9rem;
+}
+
+.googleSignInHost {
+  display: flex;
+  min-height: 44px;
+  justify-content: center;
+}
+
+.cloudAuthStatus {
+  display: flex;
+  min-height: 52px;
+  align-items: center;
+  justify-content: space-between;
+  gap: 12px;
+  color: #365314;
+  background: #f7fee7;
+  border-color: #bef264;
+  font-size: 0.9rem;
+  font-weight: 700;
+}
+
+.cloudAuthStatus button {
+  min-height: 36px;
+  padding: 0 12px;
+  color: #3f4a5a;
+  background: #fff;
+  border: 1px solid #cbd0d8;
+  border-radius: 9px;
+}
+
+.cloudLibrary {
+  display: grid;
+  gap: 16px;
+  margin-top: 24px;
+  text-align: left;
+}
+
+.libraryActionLink {
+  display: inline-flex;
+  min-height: 44px;
+  align-items: center;
+  margin-top: 8px;
+  color: #1d4ed8;
+  font-size: 0.86rem;
+  font-weight: 750;
+}
+
+.storageUsageCard,
+.cloudDocumentList {
+  padding: clamp(16px, 4vw, 22px);
+  background: #fff;
+  border: 1px solid #d8dde5;
+  border-radius: 18px;
+  box-shadow: 0 8px 22px rgb(31 41 55 / 7%);
+}
+
+.storageUsageHeading,
+.quotaMetric {
+  display: flex;
+  align-items: baseline;
+  justify-content: space-between;
+  gap: 12px;
+}
+
+.storageUsageHeading h2,
+.cloudDocumentList h2 {
+  margin: 0;
+  font-size: 1.08rem;
+}
+
+.quotaStateLabel {
+  padding: 4px 9px;
+  color: #365314;
+  font-size: 0.75rem;
+  font-weight: 800;
+  background: #ecfccb;
+  border-radius: 999px;
+}
+
+.storageUsageCard[data-state="warning"] .quotaStateLabel {
+  color: #854d0e;
+  background: #fef3c7;
+}
+
+.storageUsageCard[data-state="full"] .quotaStateLabel {
+  color: #991b1b;
+  background: #fee2e2;
+}
+
+.quotaMetric {
+  margin-top: 18px;
+  color: #5b6472;
+  font-size: 0.9rem;
+}
+
+.quotaMetric strong {
+  color: #1f2937;
+  font-variant-numeric: tabular-nums;
+}
+
+.quotaProgressTrack {
+  height: 10px;
+  margin-top: 9px;
+  overflow: hidden;
+  background: #e5e7eb;
+  border-radius: 999px;
+}
+
+.quotaProgressTrack span {
+  display: block;
+  height: 100%;
+  background: #4d7c0f;
+  border-radius: inherit;
+}
+
+.storageUsageCard[data-state="warning"] .quotaProgressTrack span {
+  background: #d97706;
+}
+
+.storageUsageCard[data-state="full"] .quotaProgressTrack span {
+  background: #b91c1c;
+}
+
+.quotaDetails {
+  display: flex;
+  flex-wrap: wrap;
+  justify-content: space-between;
+  gap: 5px 14px;
+  margin-top: 8px;
+  color: #697180;
+  font-size: 0.78rem;
+}
+
+.documentQuotaMetric {
+  padding-top: 14px;
+  border-top: 1px solid #e7e9ed;
+}
+
+.quotaNotice {
+  margin: 14px 0 0;
+  padding: 10px 12px;
+  color: #854d0e;
+  font-size: 0.85rem;
+  line-height: 1.45;
+  background: #fffbeb;
+  border: 1px solid #fde68a;
+  border-radius: 10px;
+}
+
+.storageUsageCard[data-state="full"] .quotaNotice {
+  color: #991b1b;
+  background: #fef2f2;
+  border-color: #fecaca;
+}
+
+.cloudDocumentList ul {
+  display: grid;
+  gap: 10px;
+  margin: 14px 0 0;
+  padding: 0;
+  list-style: none;
+}
+
+.cloudDocumentList li {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) auto;
+  align-items: center;
+  gap: 12px;
+  padding: 12px;
+  background: #f8fafc;
+  border: 1px solid #e2e8f0;
+  border-radius: 12px;
+}
+
+.cloudDocumentList li > div:first-child {
+  display: grid;
+  min-width: 0;
+  gap: 4px;
+}
+
+.cloudDocumentList li strong {
+  overflow: hidden;
+  font-size: 0.9rem;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.cloudDocumentList li span,
+.libraryMessage {
+  color: #697180;
+  font-size: 0.78rem;
+}
+
+.libraryMessage {
+  margin: 14px 0 0;
+}
+
+.cloudDocumentActions {
+  display: flex;
+  gap: 6px;
+}
+
+.cloudDocumentActions button {
+  min-height: 38px;
+  padding: 0 10px;
+  color: #1f2937;
+  background: #fff;
+  border: 1px solid #cbd0d8;
+  border-radius: 9px;
+  font-size: 0.8rem;
+  font-weight: 700;
+}
+
+.cloudDocumentActions .cloudDeleteButton {
+  color: #b42318;
+}
+
+@media (max-width: 479px) {
+  .cloudDocumentList li {
+    grid-template-columns: 1fr;
+  }
+
+  .cloudDocumentActions button {
+    flex: 1;
   }
 }

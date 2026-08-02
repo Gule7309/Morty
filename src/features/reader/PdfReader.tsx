@@ -1,4 +1,10 @@
-import { useCallback, useEffect, useRef, useState } from 'react'
+import {
+  useCallback,
+  useEffect,
+  useRef,
+  useState,
+  type MouseEvent,
+} from 'react'
 import { Document, pdfjs } from 'react-pdf'
 import type { PDFDocumentProxy } from 'pdfjs-dist'
 import type {
@@ -6,11 +12,18 @@ import type {
   StoredDocument,
 } from '../../storage/database'
 import { ReaderToolbar } from './ReaderToolbar'
+import { ReaderNavigationDrawer } from './ReaderNavigationDrawer'
+import { ReaderSideRail } from './ReaderSideRail'
 import {
   VirtualPageList,
   type ReaderPosition,
+  type VirtualPageListHandle,
 } from './VirtualPageList'
 import { useReadingProgress } from './useReadingProgress'
+import {
+  useReaderControls,
+  type ReaderNavigationPanel,
+} from './useReaderControls'
 
 pdfjs.GlobalWorkerOptions.workerSrc = new URL(
   'pdfjs-dist/build/pdf.worker.min.mjs',
@@ -50,6 +63,12 @@ export function PdfReader({
   onDeleteDocument,
 }: PdfReaderProps) {
   const viewportRef = useRef<HTMLDivElement>(null)
+  const virtualPageListRef = useRef<VirtualPageListHandle>(null)
+  const drawerReturnFocusRef = useRef<HTMLButtonElement | null>(null)
+  const resizeCorrectionFrameRef = useRef<number | null>(null)
+  const stablePageTimerRef = useRef<number | null>(null)
+  const stablePageIndexRef = useRef(initialProgress?.pageIndex ?? 0)
+  const zoomCorrectionFrameRef = useRef<number | null>(null)
   const restoreCompleteRef = useRef(false)
   const positionRef = useRef<ReaderPosition>({
     pageIndex: initialProgress?.pageIndex ?? 0,
@@ -57,6 +76,8 @@ export function PdfReader({
   })
   const [containerWidth, setContainerWidth] = useState(0)
   const [numPages, setNumPages] = useState(0)
+  const [pdfDocument, setPdfDocument] =
+    useState<PDFDocumentProxy | null>(null)
   const [currentPage, setCurrentPage] = useState(
     (initialProgress?.pageIndex ?? 0) + 1,
   )
@@ -65,11 +86,21 @@ export function PdfReader({
   )
   const [loadError, setLoadError] = useState<string | null>(null)
   const [storageError, setStorageError] = useState<string | null>(null)
-  const [toolbarVisible, setToolbarVisible] = useState(true)
   const scheduleProgress = useReadingProgress(
     document.id,
     setStorageError,
   )
+  const {
+    activePanel,
+    closeDrawer,
+    controlsVisible,
+    drawerOpen,
+    handleReaderDoubleTap,
+    revealControls,
+    scheduleControlsToggle,
+    selectPanel,
+    togglePanel,
+  } = useReaderControls(numPages > 0)
 
   useEffect(() => {
     const viewport = viewportRef.current
@@ -77,8 +108,35 @@ export function PdfReader({
       return
     }
 
+    let previousWidth = Math.max(0, Math.floor(viewport.clientWidth))
     const updateWidth = (width: number) => {
-      setContainerWidth(Math.max(0, Math.floor(width)))
+      const nextWidth = Math.max(0, Math.floor(width))
+      const pageIndexToPreserve =
+        previousWidth > 0 &&
+        nextWidth !== previousWidth &&
+        restoreCompleteRef.current
+          ? stablePageIndexRef.current
+          : null
+      previousWidth = nextWidth
+      setContainerWidth(nextWidth)
+
+      if (pageIndexToPreserve !== null) {
+        if (resizeCorrectionFrameRef.current !== null) {
+          cancelAnimationFrame(resizeCorrectionFrameRef.current)
+        }
+        resizeCorrectionFrameRef.current = requestAnimationFrame(() => {
+          resizeCorrectionFrameRef.current = requestAnimationFrame(() => {
+            resizeCorrectionFrameRef.current = null
+            virtualPageListRef.current?.scrollToIndex(pageIndexToPreserve)
+            positionRef.current = {
+              pageIndex: pageIndexToPreserve,
+              pageOffset: 0,
+            }
+            stablePageIndexRef.current = pageIndexToPreserve
+            setCurrentPage(pageIndexToPreserve + 1)
+          })
+        })
+      }
     }
     updateWidth(viewport.clientWidth)
 
@@ -89,21 +147,36 @@ export function PdfReader({
       }
     })
     observer.observe(viewport)
-    return () => observer.disconnect()
+    return () => {
+      observer.disconnect()
+      if (resizeCorrectionFrameRef.current !== null) {
+        cancelAnimationFrame(resizeCorrectionFrameRef.current)
+        resizeCorrectionFrameRef.current = null
+      }
+    }
   }, [])
 
   useEffect(() => {
-    if (!numPages || !toolbarVisible) {
-      return
+    return () => {
+      if (zoomCorrectionFrameRef.current !== null) {
+        cancelAnimationFrame(zoomCorrectionFrameRef.current)
+      }
+      if (stablePageTimerRef.current !== null) {
+        window.clearTimeout(stablePageTimerRef.current)
+      }
     }
-
-    const timeout = window.setTimeout(() => setToolbarVisible(false), 2400)
-    return () => window.clearTimeout(timeout)
-  }, [numPages, toolbarVisible])
+  }, [])
 
   const handlePositionChange = useCallback(
     (position: ReaderPosition) => {
       positionRef.current = position
+      if (stablePageTimerRef.current !== null) {
+        window.clearTimeout(stablePageTimerRef.current)
+      }
+      stablePageTimerRef.current = window.setTimeout(() => {
+        stablePageTimerRef.current = null
+        stablePageIndexRef.current = position.pageIndex
+      }, 180)
       setCurrentPage((current) => {
         const next = position.pageIndex + 1
         return current === next ? current : next
@@ -124,45 +197,112 @@ export function PdfReader({
 
   function changeZoom(nextZoom: number) {
     const clamped = clampZoom(Number(nextZoom.toFixed(2)))
+    const pageIndexToPreserve = positionRef.current.pageIndex
     setZoom(clamped)
-    setToolbarVisible(true)
+    revealControls()
     scheduleProgress({
       ...positionRef.current,
       zoom: clamped,
     })
+    if (zoomCorrectionFrameRef.current !== null) {
+      cancelAnimationFrame(zoomCorrectionFrameRef.current)
+    }
+    zoomCorrectionFrameRef.current = requestAnimationFrame(() => {
+      zoomCorrectionFrameRef.current = null
+      virtualPageListRef.current?.scrollToIndex(pageIndexToPreserve)
+    })
   }
 
-  function handleLoadSuccess(pdf: PDFDocumentProxy) {
+  const handleLoadSuccess = useCallback((pdf: PDFDocumentProxy) => {
     setLoadError(null)
+    setPdfDocument(pdf)
     setNumPages(pdf.numPages)
+  }, [])
+
+  const handleLoadError = useCallback((error: Error) => {
+    setNumPages(0)
+    setPdfDocument(null)
+    setLoadError(describePdfError(error))
+  }, [])
+
+  const goToPage = useCallback(
+    (pageIndex: number) => {
+      if (
+        !Number.isInteger(pageIndex) ||
+        pageIndex < 0 ||
+        pageIndex >= numPages
+      ) {
+        return
+      }
+
+      virtualPageListRef.current?.scrollToIndex(pageIndex)
+      positionRef.current = { pageIndex, pageOffset: 0 }
+      if (stablePageTimerRef.current !== null) {
+        window.clearTimeout(stablePageTimerRef.current)
+        stablePageTimerRef.current = null
+      }
+      stablePageIndexRef.current = pageIndex
+      setCurrentPage(pageIndex + 1)
+    },
+    [numPages],
+  )
+
+  function handlePanelToggle(
+    panel: ReaderNavigationPanel,
+    trigger: HTMLButtonElement,
+  ) {
+    drawerReturnFocusRef.current = trigger
+    togglePanel(panel)
   }
 
-  function handleLoadError(error: Error) {
-    setNumPages(0)
-    setLoadError(describePdfError(error))
+  function handleDrawerNavigate(pageIndex: number) {
+    goToPage(pageIndex)
+    closeDrawer()
+  }
+
+  function handleViewportClick(event: MouseEvent<HTMLDivElement>) {
+    if (event.defaultPrevented || event.button !== 0 || drawerOpen) {
+      return
+    }
+    scheduleControlsToggle()
+  }
+
+  function handleViewportDoubleClick(event: MouseEvent<HTMLDivElement>) {
+    if (event.defaultPrevented || event.button !== 0 || drawerOpen) {
+      return
+    }
+    handleReaderDoubleTap()
+    changeZoom(zoom === 1 ? 1.25 : 1)
   }
 
   return (
-    <main
-      className="readerShell"
-      onPointerDown={() => setToolbarVisible(true)}
-      onKeyDown={() => setToolbarVisible(true)}
-    >
+    <main className="readerShell" onKeyDown={revealControls}>
       <ReaderToolbar
         documentName={document.name}
-        visible={toolbarVisible}
+        visible={controlsVisible}
         zoom={zoom}
         onChooseDocument={onChooseDocument}
         onDeleteDocument={onDeleteDocument}
         onZoomOut={() => changeZoom(zoom - ZOOM_STEP)}
         onFitWidth={() => changeZoom(1)}
         onZoomIn={() => changeZoom(zoom + ZOOM_STEP)}
+        onInteraction={revealControls}
+      />
+      <ReaderSideRail
+        activePanel={activePanel}
+        visible={controlsVisible}
+        onPanelToggle={handlePanelToggle}
       />
 
       <div
         ref={viewportRef}
-        className="readerViewport"
-        onDoubleClick={() => changeZoom(zoom === 1 ? 1.25 : 1)}
+        className={`readerViewport ${
+          drawerOpen ? 'readerViewportLocked' : ''
+        }`}
+        data-testid="reader-viewport"
+        inert={drawerOpen}
+        onClick={handleViewportClick}
+        onDoubleClick={handleViewportDoubleClick}
       >
         <Document
           key={document.createdAt}
@@ -185,6 +325,7 @@ export function PdfReader({
         >
           {numPages > 0 && containerWidth > 0 && (
             <VirtualPageList
+              ref={virtualPageListRef}
               containerRef={viewportRef}
               containerWidth={containerWidth}
               initialPageIndex={initialProgress?.pageIndex ?? 0}
@@ -210,6 +351,21 @@ export function PdfReader({
           </div>
         )}
       </div>
+
+      {pdfDocument && numPages > 0 && (
+        <ReaderNavigationDrawer
+          activePanel={activePanel}
+          currentPageIndex={currentPage - 1}
+          documentName={document.name}
+          isOpen={drawerOpen}
+          numPages={numPages}
+          pdfDocument={pdfDocument}
+          returnFocusRef={drawerReturnFocusRef}
+          onClose={closeDrawer}
+          onNavigate={handleDrawerNavigate}
+          onPanelChange={selectPanel}
+        />
+      )}
 
       {numPages > 0 && (
         <div className="pageBadge" aria-live="polite">

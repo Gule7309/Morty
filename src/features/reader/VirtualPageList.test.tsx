@@ -36,8 +36,12 @@ afterEach(() => {
 })
 
 function VirtualListHarness({
+  actualWidth = 390,
+  containerWidth = 390,
   onPositionChange = vi.fn<(position: ReaderPosition) => void>(),
 }: {
+  actualWidth?: number
+  containerWidth?: number
   onPositionChange?: (position: ReaderPosition) => void
 }) {
   const viewportRef = useRef<HTMLDivElement>(null)
@@ -48,7 +52,9 @@ function VirtualListHarness({
         viewportRef.current = element
         if (element) {
           Object.defineProperties(element, {
-            offsetWidth: { configurable: true, value: 390 },
+            clientHeight: { configurable: true, value: 800 },
+            clientWidth: { configurable: true, value: actualWidth },
+            offsetWidth: { configurable: true, value: actualWidth },
             offsetHeight: { configurable: true, value: 800 },
           })
           element.getBoundingClientRect = () => ({
@@ -56,9 +62,9 @@ function VirtualListHarness({
             y: 0,
             top: 0,
             left: 0,
-            right: 390,
+            right: actualWidth,
             bottom: 800,
-            width: 390,
+            width: actualWidth,
             height: 800,
             toJSON: () => undefined,
           })
@@ -69,7 +75,7 @@ function VirtualListHarness({
     >
       <VirtualPageList
         containerRef={viewportRef}
-        containerWidth={390}
+        containerWidth={containerWidth}
         initialPageIndex={0}
         initialPageOffset={0}
         numPages={200}
@@ -122,5 +128,23 @@ describe('VirtualPageList', () => {
       )
     })
     expect(onPositionChange.mock.lastCall?.[0].pageIndex).toBeGreaterThan(0)
+  })
+
+  it('ignores transient scroll reports before ResizeObserver width catches up', async () => {
+    const onPositionChange = vi.fn()
+    render(
+      <VirtualListHarness
+        actualWidth={320}
+        containerWidth={390}
+        onPositionChange={onPositionChange}
+      />,
+    )
+
+    const viewport = screen.getByTestId('test-viewport')
+    viewport.scrollTop = 20_000
+    fireEvent.scroll(viewport)
+
+    await new Promise((resolve) => window.setTimeout(resolve, 40))
+    expect(onPositionChange).not.toHaveBeenCalled()
   })
 })

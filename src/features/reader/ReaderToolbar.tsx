@@ -7,6 +7,7 @@ interface ReaderToolbarProps {
   onZoomIn: () => void
   onZoomOut: () => void
   onFitWidth: () => void
+  onInteraction: () => void
 }
 
 export function ReaderToolbar({
@@ -18,11 +19,16 @@ export function ReaderToolbar({
   onZoomIn,
   onZoomOut,
   onFitWidth,
+  onInteraction,
 }: ReaderToolbarProps) {
   return (
     <>
       <header
         className={`readerTopBar ${visible ? '' : 'readerToolbarHidden'}`}
+        onClick={(event) => event.stopPropagation()}
+        onDoubleClick={(event) => event.stopPropagation()}
+        onFocus={onInteraction}
+        onPointerDown={(event) => event.stopPropagation()}
       >
         <p className="readerDocumentName" title={documentName}>
           {documentName}
@@ -49,6 +55,10 @@ export function ReaderToolbar({
       <div
         className={`zoomToolbar ${visible ? '' : 'readerToolbarHidden'}`}
         aria-label="PDF 縮放控制"
+        onClick={(event) => event.stopPropagation()}
+        onDoubleClick={(event) => event.stopPropagation()}
+        onFocus={onInteraction}
+        onPointerDown={(event) => event.stopPropagation()}
       >
         <button
           className="iconButton"
